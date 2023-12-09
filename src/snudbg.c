@@ -123,6 +123,9 @@ void set_debug_state(int pid, enum debugging_state state) {
         }
     } else if (state == NON_STOP) {
         // TODO
+	if(ptrace(PTRACE_CONT, pid, NULL, NULL)<0) {
+            die("Error tracing syscalls");
+        }
     }
     return;
 }
@@ -185,9 +188,28 @@ void handle_write(int pid, ADDR_T addr, unsigned char *buf, size_t len) {
 */
 void handle_break(int pid, ADDR_T addr) {
     // TODO
+    	// Read
+	long instruction = ptrace(PTRACE_PEEKDATA, pid, addr, NULL);
 
-    TODO_UNUSED(pid);
-    TODO_UNUSED(addr);
+	// Check if bp already exists
+    	int is_bp_exists = 0;
+	for (int i = 0; i < num_bps; i++){
+		if (bps[i].addr == addr){
+			is_bp_exists = 1;
+			break;
+		}
+	}
+
+	// If it doens't exists update
+	if (!is_bp_exists){
+		bps[num_bps].addr = addr;
+		bps[num_bps].orig_value = (unsigned char)instruction;
+		num_bps++;
+	}
+
+	long new_instruction = (instruction & (~0xff)) + 0xcc;
+
+	ptrace(PTRACE_POKEDATA, pid, addr, new_instruction);
 }
 
 #define CMPGET_REG(REG_TO_CMP)                   \
@@ -374,6 +396,8 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
 
         if(strcmp("continue", action)==0 || strcmp("c", action)==0) {
             // TODO
+		set_debug_state(child_pid, NON_STOP);
+		break;
         }
 
         if(strcmp("quit", action)==0 || strcmp("q", action)==0) {
