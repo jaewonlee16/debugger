@@ -10,6 +10,9 @@
 #include "snudbg.h"
 #include "procmaps.h"
 
+ADDR_T get_image_baseaddr(int pid);
+
+
 int num_bps = 0;
 breakpoint_t bps[MAX_BPS];
 
@@ -128,13 +131,26 @@ void set_debug_state(int pid, enum debugging_state state) {
    Read the memory from @pid at the address @addr with the length @len.
    The data read from @pid will be written to @buf.
 */
+
 void handle_read(int pid, ADDR_T addr, unsigned char *buf, size_t len) {
-    // TODO: Use the function dump_addr_in_hex() to print the memory data
-    TODO_UNUSED(pid);
-    TODO_UNUSED(addr);
-    TODO_UNUSED(buf);
-    TODO_UNUSED(len);
-    return;
+    long word = 0;
+    size_t bytesRead = 0;
+    unsigned char *current_bufp = buf;
+
+    while (bytesRead < len) {
+        word = ptrace(PTRACE_PEEKDATA, pid, addr + bytesRead, NULL);
+        if(word == -1){
+            perror("ptrace");
+            break;
+        }
+        size_t bytesToCopy = sizeof(word) < (len - bytesRead) ? sizeof(word) : (len - bytesRead);
+        memcpy(current_bufp, &word, bytesToCopy);
+        bytesRead += bytesToCopy;
+        current_bufp += bytesToCopy;
+    }
+
+    // Optional: print the memory data
+    dump_addr_in_hex(addr, buf, bytesRead);
 }
 
 /* 
@@ -237,10 +253,9 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
             // TODO
 		char input_reg[10];
 		scanf("%10s", input_reg);
-		char value_str[20];
-		scanf("%20s", value_str);
+		long value;
+		scanf("%ld", &value);
 
-		int value = atoi(value_str);
 		handle_set(input_reg, value, regs, child_pid);
 		continue;
 		
@@ -248,7 +263,19 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
 
         if(strcmp("read", action)==0 || strcmp("r", action)==0) {
             // TODO
-        }
+		ADDR_T input_addr;
+		scanf("%llx", &input_addr);
+		int input_size;
+		scanf("%d", &input_size);
+
+		unsigned char buf[MAX_RW];
+
+		ADDR_T base_addr = get_image_baseaddr(child_pid);
+
+		handle_read(child_pid, base_addr + input_addr, buf, input_size);
+		continue;
+
+	}
 
         if(strcmp("write", action)==0 || strcmp("w", action)==0) {
             // TODO
@@ -302,11 +329,39 @@ void set_registers(int pid, struct user_regs_struct *regs) {
   loaded to the process @pid.
   This base address is the virtual address.
 */
+
+/*
 ADDR_T get_image_baseaddr(int pid) {
     hr_procmaps** procmap = construct_procmaps(pid);
     ADDR_T baseaddr = 0;
     // TODO
     TODO_UNUSED(procmap);
+    return baseaddr;
+}
+*/
+
+ADDR_T get_image_baseaddr(int pid) {
+    hr_procmaps** procmap = construct_procmaps(pid);
+    ADDR_T baseaddr = 0;
+
+    if (procmap != NULL) {
+        int i = 0;
+        while (procmap[i] != NULL) {
+            // Checking if the map is executable and has a pathname
+            if ((procmap[i]->perms & PERMS_EXECUTE) && procmap[i]->pathname != NULL) {
+                // Assuming the main executable's pathname does not contain typical shared library patterns
+                if (strstr(procmap[i]->pathname, ".so") == NULL && strstr(procmap[i]->pathname, "[") == NULL) {
+                    baseaddr = procmap[i]->addr_begin;
+                    break;
+                }
+            }
+            i++;
+        }
+    }
+
+    // Cleanup if needed
+    // free_procmaps(procmap); // Uncomment if there's a function to free the procmaps array
+
     return baseaddr;
 }
 
