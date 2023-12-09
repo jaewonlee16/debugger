@@ -185,6 +185,7 @@ void handle_write(int pid, ADDR_T addr, unsigned char *buf, size_t len) {
 */
 void handle_break(int pid, ADDR_T addr) {
     // TODO
+
     TODO_UNUSED(pid);
     TODO_UNUSED(addr);
 }
@@ -325,7 +326,7 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
 
 		ADDR_T base_addr = get_image_baseaddr(child_pid);
 
-		LOG("HANDLE CMD: read [%llx][%llx] [%d]\n", input_addr, input_addr + base_addr, input_size);
+		LOG("HANDLE CMD: read [%llx][%llx] [%x]\n", input_addr, input_addr + base_addr, input_size);
 
 		handle_read(child_pid, base_addr + input_addr, buf, input_size);
 		continue;
@@ -348,20 +349,27 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
 		generateCharArray(value + 2, 2 * input_size, value_array);
 
 		ADDR_T base_addr = get_image_baseaddr(child_pid);
-		LOG("HANDLE CMD: write [%llx][%llx] [%s] <= [%x]\n", input_addr, input_addr + base_addr, value_array, input_size);
+		LOG("HANDLE CMD: write [%llx][%llx] [%s] <= 0x%x\n", input_addr, input_addr + base_addr, value_array, input_size);
 
 		stringToUnsignedCharArray(value_array, input_size, buf);
-		//longLongToUnsignedCharArray(value, buf);
 		handle_write(child_pid, base_addr + input_addr, buf, input_size);
 		continue;
         }
 
         if(strcmp("break", action)==0 || strcmp("b", action)==0) {
             // TODO
+		ADDR_T input_addr;
+		scanf("%llx", &input_addr);
+		ADDR_T base_addr = get_image_baseaddr(child_pid);
+		LOG("HANDLE CMD: break [%llx][%llx]\n", input_addr, input_addr + base_addr);
+		handle_break(child_pid, input_addr + base_addr);
+		continue;
         }
 
         if(strcmp("step", action)==0 || strcmp("s", action)==0) {
             // TODO
+		set_debug_state(child_pid, SINGLE_STEP);
+		break;
         }
 
         if(strcmp("continue", action)==0 || strcmp("c", action)==0) {
@@ -417,25 +425,7 @@ ADDR_T get_image_baseaddr(int pid) {
 
 ADDR_T get_image_baseaddr(int pid) {
     hr_procmaps** procmap = construct_procmaps(pid);
-    ADDR_T baseaddr = 0;
-
-    if (procmap != NULL) {
-        int i = 0;
-        while (procmap[i] != NULL) {
-            // Checking if the map is executable and has a pathname
-            if ((procmap[i]->perms & PERMS_EXECUTE) && procmap[i]->pathname != NULL) {
-                // Assuming the main executable's pathname does not contain typical shared library patterns
-                if (strstr(procmap[i]->pathname, ".so") == NULL && strstr(procmap[i]->pathname, "[") == NULL) {
-                    baseaddr = procmap[i]->addr_begin;
-                    break;
-                }
-            }
-            i++;
-        }
-    }
-
-    // Cleanup if needed
-    // free_procmaps(procmap); // Uncomment if there's a function to free the procmaps array
+    ADDR_T baseaddr = procmap[0]->addr_begin;
 
     return baseaddr;
 }
