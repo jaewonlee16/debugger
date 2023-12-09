@@ -176,6 +176,10 @@ void handle_get(char *reg_name, struct user_regs_struct *regs) {
     return;
 }
 
+#define CMPSET_REG(REG_TO_CMP)             \
+    if (strcmp(reg_name, #REG_TO_CMP)==0) {      \
+        regs->REG_TO_CMP = value;                \
+    }
 
 /*
   Set the register @reg_name with the value @value.
@@ -184,10 +188,13 @@ void handle_get(char *reg_name, struct user_regs_struct *regs) {
 void handle_set(char *reg_name, unsigned long value,
                 struct user_regs_struct *regs, int pid) {
     // TODO
-    TODO_UNUSED(reg_name);
-    TODO_UNUSED(value);
-    TODO_UNUSED(regs);
-    TODO_UNUSED(pid);
+    
+    CMPSET_REG(rax); CMPSET_REG(rbx); CMPSET_REG(rcx); CMPSET_REG(rdx);
+    CMPSET_REG(rbp); CMPSET_REG(rsp); CMPSET_REG(rsi); CMPSET_REG(rdi);
+    CMPSET_REG(r8);  CMPSET_REG(r9);  CMPSET_REG(r10); CMPSET_REG(r11);
+    CMPSET_REG(r12); CMPSET_REG(r13); CMPSET_REG(r14); CMPSET_REG(r15);
+    CMPSET_REG(rip); CMPSET_REG(eflags);
+	set_registers(pid, regs);
     return;
 }
 
@@ -215,10 +222,28 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
 
         if(strcmp("get", action)==0) {
             // TODO
+	    char input_reg[10];
+	    scanf("%10s", input_reg);
+	    handle_get(input_reg, regs);
+	    continue;
+
+	    // ------- MUST CHECK ---------------------------------------------//
+	    // what if undefined registers? -> it doesn't assert error
+	
+
         }
 
         if(strcmp("set", action)==0) {
             // TODO
+		char input_reg[10];
+		scanf("%10s", input_reg);
+		char value_str[20];
+		scanf("%20s", value_str);
+
+		int value = atoi(value_str);
+		handle_set(input_reg, value, regs, child_pid);
+		continue;
+		
         }
 
         if(strcmp("read", action)==0 || strcmp("r", action)==0) {
@@ -267,8 +292,8 @@ void get_registers(int pid, struct user_regs_struct *regs) {
 */
 void set_registers(int pid, struct user_regs_struct *regs) {
     // TODO
-    TODO_UNUSED(pid);
-    TODO_UNUSED(regs);
+        if (ptrace(PTRACE_SETREGS, pid, NULL, regs) < 0)
+		fprintf(stdout, "ptrace setregs error");
 }
 
 
