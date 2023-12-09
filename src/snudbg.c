@@ -9,6 +9,7 @@
 
 #include "snudbg.h"
 #include "procmaps.h"
+#include <errno.h>
 
 ADDR_T get_image_baseaddr(int pid);
 
@@ -138,11 +139,11 @@ void handle_read(int pid, ADDR_T addr, unsigned char *buf, size_t len) {
     unsigned char *current_bufp = buf;
 
     while (bytesRead < len) {
-        word = ptrace(PTRACE_PEEKDATA, pid, addr + bytesRead, NULL);
-        if(word == -1){
-            perror("ptrace");
-            break;
-        }
+        if ((word = ptrace(PTRACE_PEEKDATA, pid, addr + bytesRead, NULL)) == -1 && errno != 0){
+		printf("ptrace PEEKDATA error\n");
+		break;
+	}
+        
         size_t bytesToCopy = sizeof(word) < (len - bytesRead) ? sizeof(word) : (len - bytesRead);
         memcpy(current_bufp, &word, bytesToCopy);
         bytesRead += bytesToCopy;
@@ -158,12 +159,25 @@ void handle_read(int pid, ADDR_T addr, unsigned char *buf, size_t len) {
    The data to be written is placed in @buf.
 */
 void handle_write(int pid, ADDR_T addr, unsigned char *buf, size_t len) {
-    // TODO
-    TODO_UNUSED(pid);
-    TODO_UNUSED(addr);
-    TODO_UNUSED(buf);
-    TODO_UNUSED(len);
-    return;
+    long word = 0;
+    size_t bytesRead = 0;
+    unsigned char *current_bufp = buf;
+
+    while (bytesRead < len) {
+	// read chunk first
+	word = ptrace(PTRACE_PEEKDATA, pid, addr + bytesRead, NULL);
+	
+	// copy buf to chunk
+        size_t bytesToCopy = sizeof(word) < (len - bytesRead) ? sizeof(word) : (len - bytesRead);
+        memcpy(&word, current_bufp, bytesToCopy);
+
+	// write chunk
+        ptrace(PTRACE_POKEDATA, pid, addr + bytesRead, word);
+
+	// update pointer
+        bytesRead += bytesToCopy;
+        current_bufp += bytesToCopy;
+    }
 }
 
 /* 
@@ -212,6 +226,45 @@ void handle_set(char *reg_name, unsigned long value,
     CMPSET_REG(rip); CMPSET_REG(eflags);
 	set_registers(pid, regs);
     return;
+}
+
+
+void stringToUnsignedCharArray(const char *input, int byteSize, unsigned char buf[]) {
+    int inputLength = byteSize*2;
+    // Initialize buf with zeros
+    memset(buf, 0, byteSize);
+    char temp_array[3];
+
+    // Convert each pair of characters to unsigned char and store in reverse order
+    for (int i = 0; i < inputLength; i += 2) {
+        // int shift = (inputLength - i - 2)*4;
+    	memset(temp_array, 0, 2);
+	memcpy(temp_array, input + i, 2);
+	temp_array[2] = '\0';
+	long temp = strtol(temp_array, NULL, 16);
+        buf[(inputLength - i - 2) / 2] = (unsigned char)temp;
+    }
+
+    for (int i = 0; i < byteSize; i++){
+    }
+}
+
+void generateCharArray(const char *input, int size, char *output) {
+    int inputLength = strlen(input);
+
+    // Check if the specified size is sufficient
+    if (size >= inputLength) {
+    	// Calculate the number of zeros to prepend
+    	int zerosToPrepend = size - inputLength;
+
+    	// Fill the output array with zeros and copy the input string
+    	memset(output, '0', zerosToPrepend);
+    	strcpy(output + zerosToPrepend, input);
+    }
+    else{
+
+    	memcpy(output, input, size);
+    }
 }
 
 void prompt_user(int child_pid, struct user_regs_struct *regs,
@@ -265,12 +318,14 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
             // TODO
 		ADDR_T input_addr;
 		scanf("%llx", &input_addr);
-		int input_size;
-		scanf("%d", &input_size);
+		unsigned int input_size;
+		scanf("%x", &input_size);
 
 		unsigned char buf[MAX_RW];
 
 		ADDR_T base_addr = get_image_baseaddr(child_pid);
+
+		LOG("HANDLE CMD: read [%llx][%llx] [%d]\n", input_addr, input_addr + base_addr, input_size);
 
 		handle_read(child_pid, base_addr + input_addr, buf, input_size);
 		continue;
@@ -279,6 +334,26 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
 
         if(strcmp("write", action)==0 || strcmp("w", action)==0) {
             // TODO
+		ADDR_T input_addr;
+		scanf("%llx", &input_addr);
+
+		char value[MAX_RW + 2];
+		unsigned char buf[MAX_RW];
+		scanf("%1026s", value);
+
+		unsigned int input_size;
+		scanf("%x", &input_size);
+
+		char value_array[MAX_RW];
+		generateCharArray(value + 2, 2 * input_size, value_array);
+
+		ADDR_T base_addr = get_image_baseaddr(child_pid);
+		LOG("HANDLE CMD: write [%llx][%llx] [%s] <= [%x]\n", input_addr, input_addr + base_addr, value_array, input_size);
+
+		stringToUnsignedCharArray(value_array, input_size, buf);
+		//longLongToUnsignedCharArray(value, buf);
+		handle_write(child_pid, base_addr + input_addr, buf, input_size);
+		continue;
         }
 
         if(strcmp("break", action)==0 || strcmp("b", action)==0) {
@@ -432,3 +507,40 @@ int main(int argc, char* argv[]) {
     }
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
