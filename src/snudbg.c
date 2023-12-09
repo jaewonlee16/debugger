@@ -329,8 +329,8 @@ void prompt_user(int child_pid, struct user_regs_struct *regs,
             // TODO
 		char input_reg[10];
 		scanf("%10s", input_reg);
-		long value;
-		scanf("%ld", &value);
+		unsigned long value;
+		scanf("%lx", &value);
 
 		handle_set(input_reg, value, regs, child_pid);
 		continue;
@@ -437,16 +437,6 @@ void set_registers(int pid, struct user_regs_struct *regs) {
   This base address is the virtual address.
 */
 
-/*
-ADDR_T get_image_baseaddr(int pid) {
-    hr_procmaps** procmap = construct_procmaps(pid);
-    ADDR_T baseaddr = 0;
-    // TODO
-    TODO_UNUSED(procmap);
-    return baseaddr;
-}
-*/
-
 ADDR_T get_image_baseaddr(int pid) {
     hr_procmaps** procmap = construct_procmaps(pid);
     ADDR_T baseaddr = procmap[0]->addr_begin;
@@ -460,8 +450,22 @@ ADDR_T get_image_baseaddr(int pid) {
 */
 void handle_break_post(int pid, struct user_regs_struct *regs) {
     // TODO
-    TODO_UNUSED(pid);
-    TODO_UNUSED(regs);
+	ADDR_T rip = regs->rip;
+	unsigned char origin;
+
+	for (int i = 0; i < num_bps; i++){
+		if (bps[i].addr == rip - 1){
+			origin = bps[i].orig_value;
+			long changed_instruction = ptrace(PTRACE_PEEKDATA, pid, rip - 1, NULL);
+
+			long new_instruction = (changed_instruction & (~0xff)) + (long)origin;
+
+			ptrace(PTRACE_POKEDATA, pid, rip - 1, new_instruction);
+
+			regs->rip = rip - 1;
+			set_registers(pid, regs);
+		}
+	}
 }
 
 
